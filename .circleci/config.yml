@@ -28,14 +28,42 @@ jobs:
           no_output_timeout: 40m
           command: |
             mkdir -p /tmp/cache
-            docker save ubuntu:xenial-20161213 rwblair/webhook_test:latest \
+            docker save rwblair/webhook_test:latest \
             | pigz -8 -p 3 > /tmp/cache/docker.tar.gz
 
       - persist_to_workspace:
           root: /tmp
           paths:
             - cache/docker.tar.gz
-            - src/fmriprep
+
+  deploy_docker:
+    machine:
+      image: circleci/classic:201711-01
+    steps:
+
+      - attach_workspace:
+          at: /tmp
+      - run:
+          name: Load Docker image layer cache
+          no_output_timeout: 30m
+          command: |
+            docker info
+            set +o pipefail
+            if [ -f /tmp/cache/docker.tar.gz ]; then
+              sudo apt update && sudo apt -y install pigz
+              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
+              docker images
+            fi
+      - run:
+          name: Deploy to Docker Hub
+          no_output_timeout: 40m
+          command: |
+            if [[ -n "$DOCKER_PASS" ]]; then
+              docker login -u $DOCKER_USER -p $DOCKER_PASS
+              docker tag poldracklab/fmriprep poldracklab/fmriprep:unstable
+              docker push poldracklab/fmriprep:unstable
+            fi
+
 
 workflows:
   version: 2
@@ -45,3 +73,12 @@ workflows:
           filters:
             tags:
               only: /.*/
+      - deploy_docker:
+          requires:
+            - build
+          filters:
+            branches:
+              only: master
+            tags:
+              only: /.*/
+
