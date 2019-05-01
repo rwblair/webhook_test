@@ -17,9 +17,12 @@ jobs:
           name: Build Docker image
           command: |
             # Build docker image
-            docker build \
-              --rm=false \
-              -t rwblair/webhook_test:latest .
+            e=1 && for i in {1..5}; do
+              docker build \
+                --rm=false \
+                -t rwblair/webhook_test:latest . \
+                && e=0 && break || sleep 15
+            done && [ "$e" -eq "0" ]
       - run:
           name: Docker save
           no_output_timeout: 40m
