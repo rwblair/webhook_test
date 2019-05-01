@@ -60,8 +60,8 @@ jobs:
           command: |
             if [[ -n "$DOCKER_PASS" ]]; then
               docker login -u $DOCKER_USER -p $DOCKER_PASS
-              docker tag poldracklab/fmriprep poldracklab/fmriprep:unstable
-              docker push poldracklab/fmriprep:unstable
+              docker tag rwblair/webhook_test rwblair/webhook_test:unstable
+              docker push rwblair/webhook_test:unstable
             fi
 
 
