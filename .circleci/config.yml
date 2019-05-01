@@ -1,0 +1,236 @@
+version: 2
+jobs:
+
+  build:
+    environment:
+      TZ: "/usr/share/zoneinfo/America/Los_Angeles"
+    docker:
+      - image: docker:18.01.0-ce-git
+    working_directory: /tmp/
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build Docker image
+          command: |
+            # Get version, update files.
+            THISVERSION=$( python3 get_version.py )
+            if [[ ${THISVERSION:0:1} == "0" ]] ; then
+              echo "WARNING: latest git tag could not be found"
+              echo "Please, make sure you fetch all tags from upstream with"
+              echo "the command ``git fetch --tags --verbose`` and push"
+              echo "them to your fork with ``git push origin --tags``"
+            fi
+            sed -i -E "s/(__version__ = )'[A-Za-z0-9.-]+'/\1'${CIRCLE_TAG:-$THISVERSION}'/" wrapper/fmriprep_docker.py
+            sed -i -E "s/(var version = )'[A-Za-z0-9.-]+'/\1'${CIRCLE_TAG:-$THISVERSION}'/" docs/citing.rst
+            sed -i "s/title = {FMRIPrep}/title = {FMRIPrep ${CIRCLE_TAG:-$THISVERSION}}/" fmriprep/data/boilerplate.bib
+            # Build docker image
+            e=1 && for i in {1..5}; do
+              docker build \
+                --rm=false \
+                -t rwblair/webhook_test:latest \
+                --build-arg BUILD_DATE=`date -u +"%Y-%m-%dT%H:%M:%SZ"` \
+                --build-arg VCS_REF=`git rev-parse --short HEAD` \
+                --build-arg VERSION="${CIRCLE_TAG:-$THISVERSION}" . \
+              && e=0 && break || sleep 15
+            done && [ "$e" -eq "0" ]
+
+      - run:
+          name: Docker save
+          no_output_timeout: 40m
+          command: |
+            mkdir -p /tmp/cache
+            docker save ubuntu:xenial-20161213 rwblair/webhook_test:latest \
+            | pigz -8 -p 3 > /tmp/cache/docker.tar.gz
+
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+            - cache/docker.tar.gz
+
+  deploy_docker:
+    machine:
+      image: circleci/classic:201711-01
+    working_directory: /tmp/
+    steps:
+
+      - attach_workspace:
+          at: /tmp
+      - run:
+          name: Load Docker image layer cache
+          no_output_timeout: 30m
+          command: |
+            docker info
+            set +o pipefail
+            if [ -f /tmp/cache/docker.tar.gz ]; then
+              sudo apt update && sudo apt -y install pigz
+              pigz -d --stdout /tmp/cache/docker.tar.gz | docker load
+              docker images
+            fi
+      - run:
+          name: Deploy to Docker Hub
+          no_output_timeout: 40m
+          command: |
+            if [[ -n "$DOCKER_PASS" ]]; then
+              docker login -u $DOCKER_USER -p $DOCKER_PASS
+              docker tag rwblair/webhook_test rwblair/webhook_test:unstable
+              docker push rwblair/webhook_test:unstable
+              if [[ -n "$CIRCLE_TAG" ]]; then
+                docker push rwblair/webhook_test:latest
+                docker tag rwblair/webhook_test rwblair/webhook_test:$CIRCLE_TAG
+                docker push rwblair/webhook_test:$CIRCLE_TAG
+              fi
+            fi
+
+workflows:
+  version: 2
+  build_test_deploy:
+    jobs:
+      - build:
+          filters:
+            tags:
+              only: /.*/
+
+      - get_data:
+          filters:
+            branches:
+              ignore:
+                - /docs?\/.*/
+                - /tests?\/.*/
+                - /docker\/.*/
+            tags:
+              only: /.*/
+
+      - get_regression_data:
+          filters:
+            branches:
+              ignore:
+                - /docs?\/.*/
+                - /ds005\/.*/
+                - /ds054\/.*/
+                - /ds210\/.*/
+                - /docker\/.*/
+            tags:
+              only: /.*/
+
+      - build_docs:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - /tests?\/.*/
+                - /ds005\/.*/
+                - /ds054\/.*/
+                - /ds210\/.*/
+                - /docker\/.*/
+            tags:
+              only: /.*/
+
+      - update_cache:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - /docs?\/.*/
+                - /tests?\/.*/
+                - /docker\/.*/
+            tags:
+              only: /.*/
+
+      - test_pytest:
+          requires:
+            - build
+            - get_regression_data
+          filters:
+            branches:
+              ignore:
+                - /docs?\/.*/
+                - /ds005\/.*/
+                - /ds054\/.*/
+                - /ds210\/.*/
+                - /docker\/.*/
+            tags:
+              only: /.*/
+
+      - ds005:
+          requires:
+            - get_data
+            - build
+          filters:
+            branches:
+              ignore:
+                - /docs?\/.*/
+                - /tests?\/.*/
+                - /ds054\/.*/
+                - /ds210\/.*/
+                - /docker\/.*/
+            tags:
+              only: /.*/
+
+      - ds054:
+          requires:
+            - get_data
+            - build
+          filters:
+            branches:
+              ignore:
+                - /docs?\/.*/
+                - /tests?\/.*/
+                - /ds005\/.*/
+                - /ds210\/.*/
+                - /docker\/.*/
+            tags:
+              only: /.*/
+
+      - ds210:
+          requires:
+            - get_data
+            - build
+          filters:
+            branches:
+              # only: /meepi.*/
+              ignore:
+                - /docs?\/.*/
+                - /tests?\/.*/
+                - /ds005\/.*/
+                - /ds054\/.*/
+                - /docker\/.*/
+            tags:
+              only: /.*/
+
+      - deploy_docker_patches:
+          requires:
+            - build
+          filters:
+            branches:
+              only: /docker\/.*/
+
+      - deploy_docker:
+          requires:
+            - build
+            - test_pytest
+            - build_docs
+            - ds005
+            - ds054
+            - ds210
+          filters:
+            branches:
+              only: master
+            tags:
+              only: /.*/
+
+      - deploy_pypi:
+          requires:
+            - build
+            - test_pytest
+            - build_docs
+            - ds005
+            - ds054
+            - ds210
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /.*/
