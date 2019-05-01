@@ -7,6 +7,10 @@ jobs:
     docker:
       - image: docker:18.01.0-ce-git
     steps:
+      - run:
+          name: Install parallel gzip
+          command: |
+            apk add --no-cache pigz 
       - checkout
       - setup_remote_docker
       - run:
@@ -17,14 +21,18 @@ jobs:
               --rm=false \
               -t rwblair/webhook_test:latest .
       - run:
-          name: Deploy to Docker Hub
+          name: Docker save
           no_output_timeout: 40m
           command: |
-            if [[ -n "$DOCKER_PASS" ]]; then
-              docker login -u $DOCKER_USER -p $DOCKER_PASS
-              docker tag rwblair/webhook_test rwblair/webhook_test:unstable
-              docker push rwblair/webhook_test:unstable
-            fi
+            mkdir -p /tmp/cache
+            docker save ubuntu:xenial-20161213 poldracklab/fmriprep:latest \
+            | pigz -8 -p 3 > /tmp/cache/docker.tar.gz
+
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+            - cache/docker.tar.gz
+            - src/fmriprep
 
 workflows:
   version: 2
