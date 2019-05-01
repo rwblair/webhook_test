@@ -6,7 +6,6 @@ jobs:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
     docker:
       - image: docker:18.01.0-ce-git
-    working_directory: /tmp/
     steps:
       - checkout
       - setup_remote_docker
