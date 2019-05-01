@@ -25,7 +25,7 @@ jobs:
           no_output_timeout: 40m
           command: |
             mkdir -p /tmp/cache
-            docker save ubuntu:xenial-20161213 poldracklab/fmriprep:latest \
+            docker save ubuntu:xenial-20161213 rwblair/webhook_test:latest \
             | pigz -8 -p 3 > /tmp/cache/docker.tar.gz
 
       - persist_to_workspace:
