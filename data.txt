@@ -1,5 +1,0 @@
-{
-  "ref": "HEAD",
-  "task": "wat",
-  "description": "test deploy"
-}
