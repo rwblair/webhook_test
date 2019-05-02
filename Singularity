@@ -1,5 +1,5 @@
 BootStrap: docker
-From: rwblair/webhook_test
+From: python:latest
 
 %labels
     Test test
