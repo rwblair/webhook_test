@@ -62,8 +62,10 @@ jobs:
               docker login -u $DOCKER_USER -p $DOCKER_PASS
               docker tag rwblair/webhook_test rwblair/webhook_test:latest
               docker push rwblair/webhook_test:latest
+              sleep 10
+              curl -d '{"ref": "HEAD"}' -u rwblair:$GH_TOKEN \
+                https://api.github.com/repos/rwblair/webhook_test/deployments
             fi
-
 
 workflows:
   version: 2
