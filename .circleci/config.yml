@@ -63,7 +63,7 @@ jobs:
               docker tag rwblair/webhook_test rwblair/webhook_test:latest
               docker push rwblair/webhook_test:latest
               sleep 10
-              curl -d '{"ref": "HEAD", "required_contexts", []}' -u rwblair:$GH_TOKEN \
+              curl -d '{"ref": "HEAD", "required_contexts": []}' -u rwblair:$GH_TOKEN \
                 https://api.github.com/repos/rwblair/webhook_test/deployments
             fi
 
